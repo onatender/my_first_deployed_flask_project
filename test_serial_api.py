@@ -8,7 +8,7 @@ import requests
 import json
 import time
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = "https://my-first-deployed-flask-project.onrender.com/"
 ADMIN_PASSWORD = "admin123"
 
 def test_api():
@@ -154,7 +154,8 @@ def test_api():
     # Test 9: Serial key listesi (admin)
     print("\n9. Serial Key Listesi Test Ediliyor...")
     try:
-        response = requests.get(f"{BASE_URL}/api/list-serials", params={"password": ADMIN_PASSWORD})
+        list_data = {"password": ADMIN_PASSWORD}
+        response = requests.post(f"{BASE_URL}/api/list-serials", json=list_data)
         print(f"Status: {response.status_code}")
         if response.status_code == 200:
             data = response.json()

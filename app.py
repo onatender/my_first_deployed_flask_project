@@ -243,19 +243,19 @@ def check_serial_key(serial_key):
         }), 500
 
 # Admin şifre ile serial key listesi
-@app.route('/api/list-serials', methods=['GET'])
+@app.route('/api/list-serials', methods=['POST'])
 def list_serial_keys():
     """Admin şifre ile serial key listesi"""
     try:
-        # Şifre kontrolü
-        password = request.args.get('password')
-        if not password:
+        data = request.get_json()
+        
+        if not data or not data.get('password'):
             return jsonify({
                 "success": False,
                 "message": "Admin şifresi gerekli"
             }), 400
         
-        if not verify_password(password, hash_password(ADMIN_PASSWORD)):
+        if not verify_password(data['password'], hash_password(ADMIN_PASSWORD)):
             return jsonify({
                 "success": False,
                 "message": "Geçersiz admin şifresi"
@@ -315,8 +315,9 @@ def admin_info():
                 "example": "/api/check-serial/ABCD-1234-EFGH-5678"
             },
             "list_serials": {
-                "method": "GET",
-                "endpoint": "/api/list-serials?password=admin123"
+                "method": "POST",
+                "endpoint": "/api/list-serials",
+                "body": {"password": "admin123"}
             }
         },
         "serial_format": "XXXX-XXXX-XXXX-XXXX (16 karakter, büyük harf ve rakam)",

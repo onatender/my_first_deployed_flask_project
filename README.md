@@ -42,7 +42,8 @@ API `http://localhost:5000` adresinde çalışacaktır.
 - Serial key geçerliliğini kontrol eder
 
 ### Serial Key Listesi (Admin)
-- **GET** `/api/list-serials?password=admin123`
+- **POST** `/api/list-serials`
+- **Body**: `{"password": "admin123"}`
 - Tüm serial key'leri listeler
 
 ### Serial Key Deaktif Etme (Admin)
@@ -121,7 +122,9 @@ curl http://localhost:5000/api/check-serial/ABCD-1234-EFGH-5678
 ### 3. Serial Key Listesi (Admin)
 
 ```bash
-curl "http://localhost:5000/api/list-serials?password=admin123"
+curl -X POST http://localhost:5000/api/list-serials \
+  -H "Content-Type: application/json" \
+  -d '{"password": "admin123"}'
 ```
 
 ### 4. Serial Key Deaktif Etme (Admin)
@@ -159,7 +162,7 @@ def check_serial_key(serial_key):
 
 # Serial key listesi
 def list_serial_keys(password):
-    response = requests.get(f"{BASE_URL}/api/list-serials", params={"password": password})
+    response = requests.post(f"{BASE_URL}/api/list-serials", json={"password": password})
     return response.json()
 
 # Örnek kullanım
