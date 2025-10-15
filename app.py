@@ -1,408 +1,381 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import hashlib
+import secrets
+import string
+from datetime import datetime, timedelta
 import json
-from datetime import datetime
-import uuid
+import os
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Sample data
-users = [
-    {
-        "id": "1",
-        "name": "John Doe",
-        "email": "john.doe@example.com",
-        "age": 28,
-        "city": "New York",
-        "created_at": "2024-01-15T10:30:00Z"
-    },
-    {
-        "id": "2", 
-        "name": "Jane Smith",
-        "email": "jane.smith@example.com",
-        "age": 32,
-        "city": "Los Angeles",
-        "created_at": "2024-01-16T14:20:00Z"
-    },
-    {
-        "id": "3",
-        "name": "Mike Johnson",
-        "email": "mike.johnson@example.com",
-        "age": 25,
-        "city": "Chicago",
-        "created_at": "2024-01-17T09:15:00Z"
-    }
-]
+# Admin şifresi (gerçek uygulamada environment variable kullanın)
+ADMIN_PASSWORD = "admin123"  # Bu şifreyi değiştirin!
 
-products = [
-    {
-        "id": "1",
-        "name": "Wireless Headphones",
-        "price": 99.99,
-        "category": "Electronics",
-        "stock": 50,
-        "description": "High-quality wireless headphones with noise cancellation",
-        "created_at": "2024-01-10T08:00:00Z"
-    },
-    {
-        "id": "2",
-        "name": "Coffee Maker",
-        "price": 79.99,
-        "category": "Appliances",
-        "stock": 25,
-        "description": "Programmable coffee maker with timer",
-        "created_at": "2024-01-12T11:30:00Z"
-    },
-    {
-        "id": "3",
-        "name": "Running Shoes",
-        "price": 129.99,
-        "category": "Sports",
-        "stock": 100,
-        "description": "Comfortable running shoes for all terrains",
-        "created_at": "2024-01-14T16:45:00Z"
-    }
-]
+# Serial key veritabanı (gerçek uygulamada gerçek veritabanı kullanın)
+serial_keys_db = []
 
-posts = [
-    {
-        "id": "1",
-        "title": "Getting Started with Flask",
-        "content": "Flask is a lightweight web framework for Python. It's perfect for building APIs and web applications.",
-        "author": "John Doe",
-        "author_id": "1",
-        "likes": 15,
-        "created_at": "2024-01-18T12:00:00Z"
-    },
-    {
-        "id": "2",
-        "title": "Python Best Practices",
-        "content": "Here are some best practices for writing clean and maintainable Python code.",
-        "author": "Jane Smith",
-        "author_id": "2",
-        "likes": 23,
-        "created_at": "2024-01-19T15:30:00Z"
-    },
-    {
-        "id": "3",
-        "title": "API Design Principles",
-        "content": "Designing RESTful APIs requires careful consideration of endpoints, status codes, and data formats.",
-        "author": "Mike Johnson",
-        "author_id": "3",
-        "likes": 8,
-        "created_at": "2024-01-20T10:15:00Z"
-    }
-]
+# Serial key formatı: XXXX-XXXX-XXXX-XXXX (16 karakter)
+def generate_serial_key():
+    """Rastgele serial key oluşturur"""
+    characters = string.ascii_uppercase + string.digits
+    # 4 grup, her grupta 4 karakter
+    groups = []
+    for _ in range(4):
+        group = ''.join(secrets.choice(characters) for _ in range(4))
+        groups.append(group)
+    return '-'.join(groups)
 
-# Helper function to generate unique IDs
-def generate_id():
-    return str(uuid.uuid4())
+def hash_password(password):
+    """Şifreyi hash'ler"""
+    return hashlib.sha256(password.encode()).hexdigest()
 
-# Helper function to get current timestamp
-def get_current_timestamp():
-    return datetime.utcnow().isoformat() + "Z"
+def verify_password(password, hashed):
+    """Şifre doğrulaması yapar"""
+    return hash_password(password) == hashed
 
-# Routes for Users
-@app.route('/api/users', methods=['GET'])
-def get_users():
-    """Get all users"""
+def is_valid_serial_format(serial_key):
+    """Serial key formatını kontrol eder"""
+    if not serial_key or len(serial_key) != 19:
+        return False
+    parts = serial_key.split('-')
+    if len(parts) != 4:
+        return False
+    for part in parts:
+        if len(part) != 4:
+            return False
+        if not part.isalnum():
+            return False
+    return True
+
+# Ana sayfa
+@app.route('/', methods=['GET'])
+def home():
+    """Ana sayfa"""
     return jsonify({
         "success": True,
-        "data": users,
-        "count": len(users)
-    })
-
-@app.route('/api/users/<user_id>', methods=['GET'])
-def get_user(user_id):
-    """Get a specific user by ID"""
-    user = next((user for user in users if user['id'] == user_id), None)
-    if user:
-        return jsonify({
-            "success": True,
-            "data": user
-        })
-    return jsonify({
-        "success": False,
-        "message": "User not found"
-    }), 404
-
-@app.route('/api/users', methods=['POST'])
-def create_user():
-    """Create a new user"""
-    data = request.get_json()
-    
-    if not data or not data.get('name') or not data.get('email'):
-        return jsonify({
-            "success": False,
-            "message": "Name and email are required"
-        }), 400
-    
-    new_user = {
-        "id": generate_id(),
-        "name": data['name'],
-        "email": data['email'],
-        "age": data.get('age'),
-        "city": data.get('city'),
-        "created_at": get_current_timestamp()
-    }
-    
-    users.append(new_user)
-    return jsonify({
-        "success": True,
-        "data": new_user,
-        "message": "User created successfully"
-    }), 201
-
-@app.route('/api/users/<user_id>', methods=['PUT'])
-def update_user(user_id):
-    """Update a user"""
-    user = next((user for user in users if user['id'] == user_id), None)
-    if not user:
-        return jsonify({
-            "success": False,
-            "message": "User not found"
-        }), 404
-    
-    data = request.get_json()
-    if not data:
-        return jsonify({
-            "success": False,
-            "message": "No data provided"
-        }), 400
-    
-    # Update user fields
-    for key, value in data.items():
-        if key in user and key != 'id' and key != 'created_at':
-            user[key] = value
-    
-    return jsonify({
-        "success": True,
-        "data": user,
-        "message": "User updated successfully"
-    })
-
-@app.route('/api/users/<user_id>', methods=['DELETE'])
-def delete_user(user_id):
-    """Delete a user"""
-    global users
-    user = next((user for user in users if user['id'] == user_id), None)
-    if not user:
-        return jsonify({
-            "success": False,
-            "message": "User not found"
-        }), 404
-    
-    users = [user for user in users if user['id'] != user_id]
-    return jsonify({
-        "success": True,
-        "message": "User deleted successfully"
-    })
-
-# Routes for Products
-@app.route('/api/products', methods=['GET'])
-def get_products():
-    """Get all products"""
-    return jsonify({
-        "success": True,
-        "data": products,
-        "count": len(products)
-    })
-
-@app.route('/api/products/<product_id>', methods=['GET'])
-def get_product(product_id):
-    """Get a specific product by ID"""
-    product = next((product for product in products if product['id'] == product_id), None)
-    if product:
-        return jsonify({
-            "success": True,
-            "data": product
-        })
-    return jsonify({
-        "success": False,
-        "message": "Product not found"
-    }), 404
-
-@app.route('/api/products', methods=['POST'])
-def create_product():
-    """Create a new product"""
-    data = request.get_json()
-    
-    if not data or not data.get('name') or not data.get('price'):
-        return jsonify({
-            "success": False,
-            "message": "Name and price are required"
-        }), 400
-    
-    new_product = {
-        "id": generate_id(),
-        "name": data['name'],
-        "price": float(data['price']),
-        "category": data.get('category', 'General'),
-        "stock": data.get('stock', 0),
-        "description": data.get('description', ''),
-        "created_at": get_current_timestamp()
-    }
-    
-    products.append(new_product)
-    return jsonify({
-        "success": True,
-        "data": new_product,
-        "message": "Product created successfully"
-    }), 201
-
-@app.route('/api/products/<product_id>', methods=['PUT'])
-def update_product(product_id):
-    """Update a product"""
-    product = next((product for product in products if product['id'] == product_id), None)
-    if not product:
-        return jsonify({
-            "success": False,
-            "message": "Product not found"
-        }), 404
-    
-    data = request.get_json()
-    if not data:
-        return jsonify({
-            "success": False,
-            "message": "No data provided"
-        }), 400
-    
-    # Update product fields
-    for key, value in data.items():
-        if key in product and key != 'id' and key != 'created_at':
-            if key == 'price':
-                product[key] = float(value)
-            else:
-                product[key] = value
-    
-    return jsonify({
-        "success": True,
-        "data": product,
-        "message": "Product updated successfully"
-    })
-
-@app.route('/api/products/<product_id>', methods=['DELETE'])
-def delete_product(product_id):
-    """Delete a product"""
-    global products
-    product = next((product for product in products if product['id'] == product_id), None)
-    if not product:
-        return jsonify({
-            "success": False,
-            "message": "Product not found"
-        }), 404
-    
-    products = [product for product in products if product['id'] != product_id]
-    return jsonify({
-        "success": True,
-        "message": "Product deleted successfully"
-    })
-
-# Routes for Posts
-@app.route('/api/posts', methods=['GET'])
-def get_posts():
-    """Get all posts"""
-    return jsonify({
-        "success": True,
-        "data": posts,
-        "count": len(posts)
-    })
-
-@app.route('/api/posts/<post_id>', methods=['GET'])
-def get_post(post_id):
-    """Get a specific post by ID"""
-    post = next((post for post in posts if post['id'] == post_id), None)
-    if post:
-        return jsonify({
-            "success": True,
-            "data": post
-        })
-    return jsonify({
-        "success": False,
-        "message": "Post not found"
-    }), 404
-
-@app.route('/api/posts', methods=['POST'])
-def create_post():
-    """Create a new post"""
-    data = request.get_json()
-    
-    if not data or not data.get('title') or not data.get('content') or not data.get('author_id'):
-        return jsonify({
-            "success": False,
-            "message": "Title, content, and author_id are required"
-        }), 400
-    
-    # Check if author exists
-    author = next((user for user in users if user['id'] == data['author_id']), None)
-    if not author:
-        return jsonify({
-            "success": False,
-            "message": "Author not found"
-        }), 400
-    
-    new_post = {
-        "id": generate_id(),
-        "title": data['title'],
-        "content": data['content'],
-        "author": author['name'],
-        "author_id": data['author_id'],
-        "likes": 0,
-        "created_at": get_current_timestamp()
-    }
-    
-    posts.append(new_post)
-    return jsonify({
-        "success": True,
-        "data": new_post,
-        "message": "Post created successfully"
-    }), 201
-
-@app.route('/api/posts/<post_id>/like', methods=['POST'])
-def like_post(post_id):
-    """Like a post"""
-    post = next((post for post in posts if post['id'] == post_id), None)
-    if not post:
-        return jsonify({
-            "success": False,
-            "message": "Post not found"
-        }), 404
-    
-    post['likes'] += 1
-    return jsonify({
-        "success": True,
-        "data": post,
-        "message": "Post liked successfully"
-    })
-
-# General API info route
-@app.route('/api', methods=['GET'])
-def api_info():
-    """Get API information"""
-    return jsonify({
-        "success": True,
-        "message": "Welcome to the Flask API",
+        "message": "Serial Key Management API",
         "version": "1.0.0",
         "endpoints": {
-            "users": "/api/users",
-            "products": "/api/products", 
-            "posts": "/api/posts"
-        },
-        "sample_data": {
-            "users_count": len(users),
-            "products_count": len(products),
-            "posts_count": len(posts)
+            "add_serial": "POST /api/add-serial",
+            "check_serial": "GET /api/check-serial/<serial_key>",
+            "list_serials": "GET /api/list-serials",
+            "admin_info": "GET /api/admin-info"
         }
     })
 
-# Health check route
+# Admin şifre ile serial key ekleme
+@app.route('/api/add-serial', methods=['POST'])
+def add_serial_key():
+    """Şifre ile korumalı serial key ekleme"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "success": False,
+                "message": "JSON verisi gerekli"
+            }), 400
+        
+        # Şifre kontrolü
+        password = data.get('password')
+        if not password:
+            return jsonify({
+                "success": False,
+                "message": "Admin şifresi gerekli"
+            }), 400
+        
+        if not verify_password(password, hash_password(ADMIN_PASSWORD)):
+            return jsonify({
+                "success": False,
+                "message": "Geçersiz admin şifresi"
+            }), 401
+        
+        # Serial key oluşturma veya kullanıcı tarafından verilme
+        if 'serial_key' in data and data['serial_key']:
+            # Kullanıcı kendi serial key'ini veriyor
+            serial_key = data['serial_key'].upper().strip()
+            if not is_valid_serial_format(serial_key):
+                return jsonify({
+                    "success": False,
+                    "message": "Geçersiz serial key formatı. Format: XXXX-XXXX-XXXX-XXXX"
+                }), 400
+        else:
+            # Otomatik serial key oluştur
+            serial_key = generate_serial_key()
+        
+        # Serial key'in zaten var olup olmadığını kontrol et
+        existing_key = next((key for key in serial_keys_db if key['serial_key'] == serial_key), None)
+        if existing_key:
+            return jsonify({
+                "success": False,
+                "message": "Bu serial key zaten mevcut"
+            }), 400
+        
+        # Serial key bilgileri
+        key_info = {
+            "serial_key": serial_key,
+            "created_at": datetime.now().isoformat(),
+            "is_active": True,
+            "description": data.get('description', ''),
+            "expiry_date": data.get('expiry_date'),  # Opsiyonel
+            "max_uses": data.get('max_uses', 1),  # Varsayılan 1 kullanım
+            "current_uses": 0
+        }
+        
+        # Expiry date varsa kontrol et
+        if key_info['expiry_date']:
+            try:
+                expiry = datetime.fromisoformat(key_info['expiry_date'].replace('Z', '+00:00'))
+                if expiry <= datetime.now():
+                    return jsonify({
+                        "success": False,
+                        "message": "Son kullanma tarihi geçmiş olamaz"
+                    }), 400
+            except ValueError:
+                return jsonify({
+                    "success": False,
+                    "message": "Geçersiz tarih formatı. ISO format kullanın: YYYY-MM-DDTHH:MM:SS"
+                }), 400
+        
+        # Serial key'i veritabanına ekle
+        serial_keys_db.append(key_info)
+        
+        return jsonify({
+            "success": True,
+            "message": "Serial key başarıyla eklendi",
+            "data": {
+                "serial_key": serial_key,
+                "created_at": key_info['created_at'],
+                "description": key_info['description'],
+                "expiry_date": key_info['expiry_date'],
+                "max_uses": key_info['max_uses']
+            }
+        }), 201
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Sunucu hatası: {str(e)}"
+        }), 500
+
+# Serial key sorgulama
+@app.route('/api/check-serial/<serial_key>', methods=['GET'])
+def check_serial_key(serial_key):
+    """Serial key sorgulama"""
+    try:
+        if not serial_key:
+            return jsonify({
+                "success": False,
+                "message": "Serial key gerekli"
+            }), 400
+        
+        # Serial key formatını kontrol et
+        formatted_key = serial_key.upper().strip()
+        if not is_valid_serial_format(formatted_key):
+            return jsonify({
+                "success": False,
+                "message": "Geçersiz serial key formatı"
+            }), 400
+        
+        # Serial key'i veritabanında ara
+        key_info = next((key for key in serial_keys_db if key['serial_key'] == formatted_key), None)
+        
+        if not key_info:
+            return jsonify({
+                "success": False,
+                "message": "Serial key bulunamadı",
+                "is_valid": False
+            }), 404
+        
+        # Serial key aktif mi kontrol et
+        if not key_info['is_active']:
+            return jsonify({
+                "success": False,
+                "message": "Serial key deaktif",
+                "is_valid": False
+            }), 400
+        
+        # Son kullanma tarihi kontrolü
+        if key_info['expiry_date']:
+            try:
+                expiry = datetime.fromisoformat(key_info['expiry_date'].replace('Z', '+00:00'))
+                if expiry <= datetime.now():
+                    return jsonify({
+                        "success": False,
+                        "message": "Serial key süresi dolmuş",
+                        "is_valid": False
+                    }), 400
+            except ValueError:
+                pass  # Tarih formatı hatası varsa görmezden gel
+        
+        # Kullanım limiti kontrolü
+        if key_info['current_uses'] >= key_info['max_uses']:
+            return jsonify({
+                "success": False,
+                "message": "Serial key kullanım limiti dolmuş",
+                "is_valid": False
+            }), 400
+        
+        # Başarılı sorgulama - kullanım sayısını artır
+        key_info['current_uses'] += 1
+        
+        return jsonify({
+            "success": True,
+            "message": "Serial key geçerli",
+            "is_valid": True,
+            "data": {
+                "serial_key": formatted_key,
+                "created_at": key_info['created_at'],
+                "description": key_info['description'],
+                "expiry_date": key_info['expiry_date'],
+                "max_uses": key_info['max_uses'],
+                "current_uses": key_info['current_uses'],
+                "remaining_uses": key_info['max_uses'] - key_info['current_uses']
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Sunucu hatası: {str(e)}"
+        }), 500
+
+# Admin şifre ile serial key listesi
+@app.route('/api/list-serials', methods=['GET'])
+def list_serial_keys():
+    """Admin şifre ile serial key listesi"""
+    try:
+        # Şifre kontrolü
+        password = request.args.get('password')
+        if not password:
+            return jsonify({
+                "success": False,
+                "message": "Admin şifresi gerekli"
+            }), 400
+        
+        if not verify_password(password, hash_password(ADMIN_PASSWORD)):
+            return jsonify({
+                "success": False,
+                "message": "Geçersiz admin şifresi"
+            }), 401
+        
+        # Serial key'leri listele (şifreleri gizle)
+        safe_keys = []
+        for key in serial_keys_db:
+            safe_key = {
+                "serial_key": key['serial_key'],
+                "created_at": key['created_at'],
+                "description": key['description'],
+                "is_active": key['is_active'],
+                "expiry_date": key['expiry_date'],
+                "max_uses": key['max_uses'],
+                "current_uses": key['current_uses'],
+                "remaining_uses": key['max_uses'] - key['current_uses']
+            }
+            safe_keys.append(safe_key)
+        
+        return jsonify({
+            "success": True,
+            "message": f"{len(safe_keys)} serial key bulundu",
+            "data": safe_keys,
+            "count": len(safe_keys)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Sunucu hatası: {str(e)}"
+        }), 500
+
+# Admin bilgileri
+@app.route('/api/admin-info', methods=['GET'])
+def admin_info():
+    """Admin bilgileri ve API kullanımı"""
+    return jsonify({
+        "success": True,
+        "message": "Serial Key Management API",
+        "admin_instructions": {
+            "add_serial": {
+                "method": "POST",
+                "endpoint": "/api/add-serial",
+                "required_fields": ["password"],
+                "optional_fields": ["serial_key", "description", "expiry_date", "max_uses"],
+                "example": {
+                    "password": "admin123",
+                    "description": "Premium kullanıcı için",
+                    "expiry_date": "2024-12-31T23:59:59",
+                    "max_uses": 5
+                }
+            },
+            "check_serial": {
+                "method": "GET",
+                "endpoint": "/api/check-serial/<serial_key>",
+                "example": "/api/check-serial/ABCD-1234-EFGH-5678"
+            },
+            "list_serials": {
+                "method": "GET",
+                "endpoint": "/api/list-serials?password=admin123"
+            }
+        },
+        "serial_format": "XXXX-XXXX-XXXX-XXXX (16 karakter, büyük harf ve rakam)",
+        "current_serial_count": len(serial_keys_db)
+    })
+
+# Serial key deaktif etme (admin)
+@app.route('/api/deactivate-serial/<serial_key>', methods=['POST'])
+def deactivate_serial_key(serial_key):
+    """Admin şifre ile serial key deaktif etme"""
+    try:
+        data = request.get_json()
+        
+        if not data or not data.get('password'):
+            return jsonify({
+                "success": False,
+                "message": "Admin şifresi gerekli"
+            }), 400
+        
+        if not verify_password(data['password'], hash_password(ADMIN_PASSWORD)):
+            return jsonify({
+                "success": False,
+                "message": "Geçersiz admin şifresi"
+            }), 401
+        
+        formatted_key = serial_key.upper().strip()
+        key_info = next((key for key in serial_keys_db if key['serial_key'] == formatted_key), None)
+        
+        if not key_info:
+            return jsonify({
+                "success": False,
+                "message": "Serial key bulunamadı"
+            }), 404
+        
+        key_info['is_active'] = False
+        
+        return jsonify({
+            "success": True,
+            "message": "Serial key deaktif edildi",
+            "data": {
+                "serial_key": formatted_key,
+                "is_active": False
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Sunucu hatası: {str(e)}"
+        }), 500
+
+# Health check
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
+    """Sağlık kontrolü"""
     return jsonify({
         "status": "healthy",
-        "timestamp": get_current_timestamp()
+        "timestamp": datetime.now().isoformat(),
+        "serial_keys_count": len(serial_keys_db)
     })
 
 # Error handlers
@@ -410,15 +383,21 @@ def health_check():
 def not_found(error):
     return jsonify({
         "success": False,
-        "message": "Endpoint not found"
+        "message": "Endpoint bulunamadı"
     }), 404
 
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({
         "success": False,
-        "message": "Internal server error"
+        "message": "Sunucu hatası"
     }), 500
 
 if __name__ == '__main__':
+    print("🔑 Serial Key Management API başlatılıyor...")
+    print(f"🔐 Admin şifresi: {ADMIN_PASSWORD}")
+    print("📝 Bu şifreyi güvenli bir yerde saklayın!")
+    print("🌐 API: http://localhost:5000")
+    print("📖 Dokümantasyon: http://localhost:5000/api/admin-info")
+    
     app.run(debug=True, host='0.0.0.0', port=5000)
